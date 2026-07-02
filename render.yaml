@@ -16,8 +16,8 @@
 # To deploy:
 #   1. Push this repo to GitHub.
 #   2. In Render, click "New" -> "Blueprint" and pick this repo.
-#   3. Set the secret env vars when prompted (OPENAI_API_KEY,
-#      DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD).
+#   3. Set the secret env vars when prompted
+#      (DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD).
 #   4. First boot seeds the default admin; log in with those creds.
 
 services:
@@ -37,11 +37,13 @@ services:
         value: 3.11.9
       - key: NODE_VERSION
         value: 20.11.1
-      # OpenAI — set OPENAI_API_KEY as a secret in the dashboard
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: gpt-4o-mini
+      # AI model inference — English is the default model path.
+      - key: ENGLISH_MODEL_URL
+        value: https://revenge-kelp-reword.ngrok-free.dev/chat
+      - key: ENGLISH_MODEL_NAME
+        value: english-agriculture-model
+      - key: MODEL_TIMEOUT_SECONDS
+        value: 120
       # Auth — JWT_SECRET is generated once by Render and pinned.
       - key: JWT_SECRET
         generateValue: true

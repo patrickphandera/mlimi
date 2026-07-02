@@ -1,12 +1,12 @@
 # Mlimi AI — Malawi Agriculture Chatbot
 
-A modern chatbot for Malawian farmers. Flask backend (OpenAI for now,
-swappable for the fine-tuned LLM later), React + Tailwind + shadcn-style UI
+A modern chatbot for Malawian farmers. Flask backend using an external English model inference endpoint
+(swappable for future language-specific models), React + Tailwind + shadcn-style UI
 with a farmer-themed palette.
 
 ```
 chatbot/
-├── backend/        Flask API (gpt-4o-mini, streaming via SSE, SQLite auth)
+├── backend/        Flask API (external model inference, streaming-compatible SSE, SQLite auth)
 └── frontend/       Vite + React + TypeScript + Tailwind + shadcn UI
 ```
 
@@ -24,7 +24,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-$EDITOR .env             # set OPENAI_API_KEY, change JWT_SECRET, etc.
+$EDITOR .env             # set ENGLISH_MODEL_URL, change JWT_SECRET, etc.
 
 python app.py            # runs on http://localhost:5050
 ```
@@ -91,8 +91,9 @@ All live in `backend/.env`. See `backend/.env.example` for a complete template.
 
 | Var                     | Default                | Notes                                              |
 | ----------------------- | ---------------------- | -------------------------------------------------- |
-| `OPENAI_API_KEY`        | *(required)*           | Your OpenAI key                                    |
-| `OPENAI_MODEL`          | `gpt-4o-mini`          | Any chat completions model                         |
+| `ENGLISH_MODEL_URL`    | bundled ngrok URL      | English model `/chat` inference endpoint           |
+| `ENGLISH_MODEL_NAME`   | `english-agriculture-model` | Display/logging name for the English model   |
+| `MODEL_TIMEOUT_SECONDS`| `120`                  | Timeout for model inference calls                  |
 | `PORT`                  | `5050`                 | Flask listen port                                  |
 | `JWT_SECRET`            | dev-only fallback      | **Change for production** — random 48+ char string |
 | `MLIMI_DB`              | `backend/mlimi.db`     | SQLite path                                        |
@@ -197,7 +198,7 @@ Add TLS with `certbot --nginx -d mlimi.example.com`.
 SSH in, then:
 
 ```bash
-# Edit env (especially JWT_SECRET, default admin password, OPENAI_API_KEY)
+# Edit env (especially JWT_SECRET, default admin password, ENGLISH_MODEL_URL)
 sudo -u mlimi $EDITOR /srv/mlimi/chatbot/backend/.env
 
 # Start the backend — this seeds the default users
@@ -241,13 +242,12 @@ In Render: **New → Blueprint → connect this repo**. Render reads
 
 | Env var                  | What to set it to                                  |
 | ------------------------ | -------------------------------------------------- |
-| `OPENAI_API_KEY`         | Your OpenAI key                                    |
 | `DEFAULT_ADMIN_EMAIL`    | Your admin email (always treated as admin)         |
 | `DEFAULT_ADMIN_PASSWORD` | Password the admin will use to log in             |
 
 Everything else is pre-set in `render.yaml`:
 - `JWT_SECRET` is auto-generated once by Render and pinned.
-- `OPENAI_MODEL=gpt-4o-mini` (override in the dashboard if needed).
+- `ENGLISH_MODEL_URL` points to the English model inference endpoint.
 - `SEED_DEFAULT_USER` is left at its default (`1`) so the demo farmer
   account `farmer@mlimi.local` / `farmer12345` is always available after
   a redeploy. Set to `0` in the dashboard to skip it.
@@ -344,12 +344,9 @@ and add a `<code>_LANGUAGE_RULE` + branch in
 ## Switching to the fine-tuned model
 
 In `backend/app.py`, both `chat()` and `chat_stream()` build the same
-`messages` array. To use your `chichewa-agri-advisor` (or any HF inference
-endpoint), replace the OpenAI `client.chat.completions.create(...)` call with
-a `requests.post(...)` to your endpoint. The frontend, auth, and analytics
-logging do not need to change. (You'll likely want to keep using OpenAI as the
-English path and route Chichewa requests to your fine-tune — branch on
-`language` inside the chat handler.)
+`messages` array and send it to `ENGLISH_MODEL_URL`. To add Chichewa later, add a
+`CHICHEWA_MODEL_URL` env var and branch on `language` inside the chat handler.
+The frontend, auth, and analytics logging do not need to change.
 
 ---
 
@@ -367,7 +364,6 @@ English path and route Chichewa requests to your fine-tune — branch on
 
 ## Security checklist before deploying
 
-- [ ] Rotate `OPENAI_API_KEY` if it was ever committed to git.
 - [ ] Generate a fresh `JWT_SECRET` (48+ random chars) and put it in `.env`.
 - [ ] Change `DEFAULT_ADMIN_PASSWORD` (or sign in and reset it on first boot).
 - [ ] Set `SEED_DEFAULT_USER=0` if you don't want the test farmer account in prod.

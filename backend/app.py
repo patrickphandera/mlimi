@@ -16,18 +16,22 @@ import json
 import os
 import time
 
+import requests
 from dotenv import load_dotenv
 from flask import Flask, Response, g, jsonify, request, send_from_directory, stream_with_context
 from flask_cors import CORS
-from openai import OpenAI
 
 from admin import admin_bp
 from auth import auth_bp, get_db, init_db, require_auth, seed_defaults
 
 load_dotenv()
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+ENGLISH_MODEL_URL = os.environ.get(
+    "ENGLISH_MODEL_URL",
+    "https://revenge-kelp-reword.ngrok-free.dev/chat",
+)
+ENGLISH_MODEL_NAME = os.environ.get("ENGLISH_MODEL_NAME", "english-agriculture-model")
+MODEL_TIMEOUT_SECONDS = int(os.environ.get("MODEL_TIMEOUT_SECONDS", "120"))
 
 # Path to the built frontend (`npm run build` output). In single-service
 # Render deploys, Flask serves this so the API and SPA share an origin.
@@ -102,18 +106,23 @@ def _serve_spa(path: str):
         return send_from_directory(FRONTEND_DIST, path)
     return send_from_directory(FRONTEND_DIST, "index.html")
 
-_client: OpenAI | None = None
+def call_english_model(messages) -> str:
+    if not ENGLISH_MODEL_URL:
+        raise RuntimeError("ENGLISH_MODEL_URL is not configured")
 
+    response = requests.post(
+        ENGLISH_MODEL_URL,
+        headers={"Content-Type": "application/json"},
+        json={"messages": messages},
+        timeout=MODEL_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
 
-def get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        if not OPENAI_API_KEY:
-            raise RuntimeError(
-                "OPENAI_API_KEY is not set. Add it to chatbot/backend/.env"
-            )
-        _client = OpenAI(api_key=OPENAI_API_KEY)
-    return _client
+    data = response.json()
+    reply = data.get("reply") or data.get("response")
+    if not isinstance(reply, str) or not reply.strip():
+        raise RuntimeError(f"Model returned an unexpected response: {data}")
+    return reply.strip()
 
 
 def build_messages(history, language=None):
@@ -152,7 +161,7 @@ def log_chat_event(user_id, language, prompt_tokens, completion_tokens, total_to
 
 @app.get("/api/health")
 def health():
-    return jsonify({"ok": True, "model": OPENAI_MODEL, "has_key": bool(OPENAI_API_KEY)})
+    return jsonify({"ok": True, "model": ENGLISH_MODEL_NAME, "english_model_url": ENGLISH_MODEL_URL})
 
 
 @app.post("/api/chat")
@@ -165,21 +174,14 @@ def chat():
         return jsonify({"error": "messages is required"}), 400
 
     try:
-        client = get_client()
-        completion = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=messages,
-            temperature=0.4,
-        )
-        reply = completion.choices[0].message.content or ""
-        usage = getattr(completion, "usage", None)
+        reply = call_english_model(messages)
         log_chat_event(
             user_id=g.user["id"],
             language=language,
-            prompt_tokens=getattr(usage, "prompt_tokens", 0),
-            completion_tokens=getattr(usage, "completion_tokens", 0),
-            total_tokens=getattr(usage, "total_tokens", 0),
-            model=OPENAI_MODEL,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            model=ENGLISH_MODEL_NAME,
         )
         return jsonify({"reply": reply})
     except Exception as exc:
@@ -204,25 +206,8 @@ def chat_stream():
     def generate():
         prompt_tokens = completion_tokens = total_tokens = 0
         try:
-            client = get_client()
-            stream = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=messages,
-                temperature=0.4,
-                stream=True,
-                stream_options={"include_usage": True},
-            )
-            for chunk in stream:
-                if chunk.choices:
-                    delta = chunk.choices[0].delta
-                    token = getattr(delta, "content", None)
-                    if token:
-                        yield sse("token", {"text": token})
-                usage = getattr(chunk, "usage", None)
-                if usage:
-                    prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
-                    completion_tokens = getattr(usage, "completion_tokens", 0) or 0
-                    total_tokens = getattr(usage, "total_tokens", 0) or 0
+            reply = call_english_model(messages)
+            yield sse("token", {"text": reply})
             yield sse("done", {"ok": True})
         except Exception as exc:
             yield sse("error", {"message": str(exc)})
@@ -233,7 +218,7 @@ def chat_stream():
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
-                model=OPENAI_MODEL,
+                model=ENGLISH_MODEL_NAME,
             )
 
     return Response(

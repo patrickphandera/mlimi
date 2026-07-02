@@ -141,8 +141,8 @@ function Dashboard() {
         <Stat label="Tokens used" value={stats.totals.totalTokens.toLocaleString()} />
         <Stat
           label="Est. cost (USD)"
-          value={`$${estimateCost(stats.totals.promptTokens, stats.totals.completionTokens).toFixed(2)}`}
-          hint="gpt-4o-mini @ $0.15/$0.60 per MTok"
+          value="$0.00"
+          hint="External endpoint does not report token pricing"
         />
       </div>
 
@@ -240,11 +240,6 @@ function labelForLang(code: string) {
   if (code === "ny") return "Chichewa";
   if (code === "en") return "English";
   return code;
-}
-
-function estimateCost(promptTokens: number, completionTokens: number): number {
-  // gpt-4o-mini pricing (USD per 1M tokens) — adjust here if you switch models
-  return (promptTokens * 0.15 + completionTokens * 0.6) / 1_000_000;
 }
 
 function UsersTab() {
@@ -453,7 +448,7 @@ function SystemTab() {
     <div className="space-y-4">
       <h2 className="font-display text-2xl font-bold">System</h2>
       <div className="space-y-3">
-        <InfoCard label="Model" value="gpt-4o-mini" hint="OPENAI_MODEL env var" />
+        <InfoCard label="Model" value="English inference endpoint" hint="ENGLISH_MODEL_URL env var" />
         <InfoCard label="Languages" value="English, Chichewa" hint="Configured in frontend Header" />
         <InfoCard
           label="System prompt"
